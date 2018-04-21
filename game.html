@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Arrow Shooter Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+        #score_info {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            width: 100%;
+            text-align: right;
+            z-index: 100;
+            display:block;
+            color: #ffffff;
+        }
+        #life_info {
+            position: absolute;
+            top: 20px;
+            left: 30px;
+            width: 100%;
+            text-align: left;
+            z-index: 100;
+            display:block;
+            color: #ffffff;
+        }
+        #game_over_info {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            size: 100px;
+            z-index: 100;
+            display:block;
+            color: #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <div id="score_info">
+        <h1 id="score">Score: 0</h1>
+    </div>
+    <div id="life_info">
+        <h1 id="life">Life: 5</h1>
+    </div>
+    <div id="game_over_info">
+        <h1 id="game_over_text"></h1>
+    </div>
+
+    <script type="text/javascript" src="js/three.js"></script>
+    <script type="text/javascript" src="js/stats.js"></script>
+    <script>
+
+        'use strict';
+
+        // player life info
+        let playerLife = 5;
+        function updatePlayerLife( amount ) {
+            playerLife += amount;
+            document.getElementById("life").innerHTML = "Life: " + playerLife;
+
+            if( playerLife <= 0 ) {
+                document.getElementById("game_over_text").innerHTML = "Game Over";
+            }
+        }
+        updatePlayerLife( 0 );
+
+        let playerScore = 0;
+        function updatePlayerScore( amount ) {
+            playerScore += amount;
+            document.getElementById("score").innerHTML = "Score: " + playerScore;
+        }
+        updatePlayerScore( 0 );
+
+        // arrow info
+        let arrowStartDistance = 90;
+        let arrowShootingSpeed = 10;
+        let arrowEndDistance = -600;
+
+        // enemy info
+        let enemyStartDistance = -500;
+        let enemyHurtDistance = arrowStartDistance * 0.75;
+        let enemyLookAtDistance = arrowStartDistance;
+        let enemyInitialPositionRage = {
+            x: {
+                min: -900,
+                max: 900
+            },
+
+            y: {
+                min: -440,
+                max: 440
+            }
+        };
+        function getRandomNumberInRange( min, max ) {
+            return Math.random() * ( max - min ) + min;
+        }
+        let enemyMovementSpeed = 7;
+
+        // scene and light
+        let scene = new THREE.Scene();
+        scene.add( new THREE.AmbientLight( 0xffffff ) );
+
+        // backdrop - to detect direction of mouse clicked point
+        let backDrop = new THREE.Mesh(
+            new THREE.BoxGeometry( 1845, 915, 2 ),
+            new THREE.MeshLambertMaterial( { color: 0x000000 } )
+        );
+        backDrop.position.z = -500;
+        backDrop.gameObjectType = "back_drop";
+        scene.add( backDrop );
+
+        // main camera
+        let camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 2000 );
+        camera.position.z = 100;
+        camera.lookAt( new THREE.Vector3( 0, 0, 0 ) );
+
+        // arrows
+        let arrowGroup = new THREE.Group();
+        scene.add( arrowGroup );
+        function createArrow() {
+            let arrow = new THREE.Mesh(
+                new THREE.BoxGeometry( 1, 1, 50 ),
+                new THREE.MeshLambertMaterial( { color: 0xffffff } )
+            );
+
+            arrow.position.z = arrowStartDistance;
+
+            arrow.gameObjectType = "arrow";
+
+            arrowGroup.add( arrow );
+            return arrow;
+        }
+
+        // enemies
+        let enemyAppearIntervalSeconds = 1;
+        let numEnemyAdd = 1;
+        let enemyGroup = new THREE.Group();
+        scene.add( enemyGroup );
+        let enemyGeometry = new THREE.BoxGeometry( 5, 5, 5 );
+        let enemyMaterial = new THREE.MeshLambertMaterial( { color: 0x500000 } );
+        function createEnemy() {
+            let enemy = new THREE.Mesh(
+                enemyGeometry,
+                enemyMaterial
+            );
+            enemy .gameObjectType = "enemy";
+
+            enemy.position.x = getRandomNumberInRange(
+                enemyInitialPositionRage.x.min,
+                enemyInitialPositionRage.x.max
+            );
+
+            enemy.position.y = getRandomNumberInRange(
+                enemyInitialPositionRage.y.min,
+                enemyInitialPositionRage.y.max
+            );
+
+            enemy.position.z = enemyStartDistance;
+
+            enemy.lookAt( new THREE.Vector3( 0, 0, enemyLookAtDistance ) );
+
+            enemyGroup.add( enemy );
+            return enemy;
+        }
+
+        // renderer setup
+        let renderer = new THREE.WebGLRenderer( { alpha: false } );
+        renderer.setSize( window.innerWidth, window.innerHeight );
+        document.body.appendChild( renderer.domElement );
+
+        document.onmousedown = function (event) {
+            if( playerLife <= 0 ) {
+                return;
+            }
+
+            // raycasting
+            let raycaster = new THREE.Raycaster();
+            let mouse = new THREE.Vector2();
+            mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+            mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+            raycaster.setFromCamera( mouse, camera );
+
+            let intersectObjs = raycaster.intersectObjects( scene.children );
+
+            for( let i = 0; i < intersectObjs.length; i++ ) {
+                if( intersectObjs[i].object.gameObjectType === "back_drop" ) {
+                    let arrow = createArrow();
+                    arrow.lookAt( intersectObjs[i].point );
+                }
+            }
+        };
+
+        let gameClock = undefined;
+        let passedSeconds = 0;
+        function updateAllGameObject() {
+            if( playerLife <= 0 ) {
+                return;
+            }
+
+            if( gameClock === undefined ) {
+                gameClock = new THREE.Clock();
+            }
+
+            passedSeconds += gameClock.getDelta();
+
+            // add new enemy
+            if( passedSeconds >= enemyAppearIntervalSeconds ) {
+                createEnemy();
+                // createManyEnemies();
+
+                passedSeconds = 0;
+
+                enemyAppearIntervalSeconds -= 0.01;
+                if( enemyAppearIntervalSeconds <= 0.5 ) {
+                    enemyAppearIntervalSeconds = 0.5;
+                }
+            }
+
+            // update arrows
+            for( let i = 0; i < arrowGroup.children.length; i++ ) {
+                let arrow = arrowGroup.children[i];
+                let arrowBoundingBox = new THREE.Box3().setFromObject( arrow );
+                let removeArrow = false;
+
+                for( let j = 0; j < enemyGroup.children.length; j++ ) {
+                    let enemy = enemyGroup.children[j];
+                    let enemyBoundingBox = new THREE.Box3().setFromObject( enemy );
+
+                    if( arrowBoundingBox.intersectsBox( enemyBoundingBox ) ) {
+                        enemyGroup.remove( enemy );
+                        updatePlayerScore( 1 );
+                        removeArrow = true;
+                        break;
+                    }
+                }
+
+                if( arrow.position.z <= arrowEndDistance ) {
+                    removeArrow = true;
+                }
+
+                if( removeArrow ) {
+                    arrowGroup.remove( arrow );
+                    i--;
+                    continue;
+                }
+
+                arrow.translateZ( arrowShootingSpeed );
+            }
+
+            // update enemies
+            for( let i = 0; i < enemyGroup.children.length; i++ ) {
+                let enemy = enemyGroup.children[i];
+
+                if( enemy.position.z > enemyHurtDistance ) {
+                    updatePlayerLife( -1 );
+                    enemyGroup.remove( enemy );
+                    i--;
+                    continue;
+                }
+
+                enemy.translateZ( enemyMovementSpeed );
+            }
+        }
+
+        let stats = new Stats();
+        stats.showPanel( 0 ); // 0: fps, 1: ms, 2: mb, 3+: custom
+        document.body.appendChild( stats.dom );
+
+        function animate() {
+
+            stats.begin();
+
+            updateAllGameObject();
+            renderer.render( scene, camera );
+
+            stats.end();
+
+            requestAnimationFrame( animate );
+        }
+        requestAnimationFrame( animate );
+
+    </script>
+</body>
+</html>
